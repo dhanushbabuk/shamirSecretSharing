@@ -1,122 +1,55 @@
-const fs = require("fs");
+// Import required modules
+const fs = require('fs');
+const BigNumber = require('bignumber.js');
 
-// Function to decode the value from the given base
-function decodeValue(base, value) {
-  const bigBase = BigInt(base);
-  const digits = value.toUpperCase().split("");
-  const digitMap = {};
-  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach((char, index) => {
-    digitMap[char] = BigInt(index);
-  });
-  let result = 0n;
-  for (const digit of digits) {
-    const digitValue = digitMap[digit];
-    if (digitValue === undefined || digitValue >= bigBase) {
-      throw new Error(`Invalid digit '${digit}' for base ${base}`);
-    }
-    result = result * bigBase + digitValue;
-  }
-  return result;
+// Read the input.json file
+const data = fs.readFileSync('input.json', 'utf8');
+const jsonData = JSON.parse(data);
+
+// Get k value
+const k = parseInt(jsonData['keys']['k']);
+
+// Extract x and y values
+let xList = [];
+let yList = [];
+
+// Iterate over the keys to get x and y values
+for (let key in jsonData) {
+    if (key === 'keys') continue;
+
+    const x = new BigNumber(key);
+    const base = parseInt(jsonData[key]['base']);
+    const value = jsonData[key]['value'];
+
+    // Decode y value
+    const y = new BigNumber(value, base);
+
+    xList.push(x);
+    yList.push(y);
 }
 
-// Function to compute the greatest common divisor (GCD)
-function gcd(a, b) {
-  a = a < 0n ? -a : a;
-  b = b < 0n ? -b : b;
-  while (b !== 0n) {
-    const temp = b;
-    b = a % b;
-    a = temp;
-  }
-  return a;
-}
+// Use only the first k data points
+xList = xList.slice(0, k);
+yList = yList.slice(0, k);
 
-// Function to simplify fractions
-function simplifyFraction(frac) {
-  const commonDivisor = gcd(frac.num, frac.den);
-  frac.num /= commonDivisor;
-  frac.den /= commonDivisor;
-  if (frac.den < 0n) {
-    frac.num = -frac.num;
-    frac.den = -frac.den;
-  }
-  return frac;
-}
+// Compute c using Lagrange interpolation at x=0
+let c = new BigNumber(0);
 
-// Fraction arithmetic operations
-function addFractions(a, b) {
-  const num = a.num * b.den + b.num * a.den;
-  const den = a.den * b.den;
-  return simplifyFraction({ num, den });
-}
+for (let i = 0; i < k; i++) {
+    let numerator = new BigNumber(1);
+    let denominator = new BigNumber(1);
 
-function multiplyFractions(a, b) {
-  const num = a.num * b.num;
-  const den = a.den * b.den;
-  return simplifyFraction({ num, den });
-}
-
-// Lagrange interpolation to find the polynomial value at x = 0
-function lagrangeInterpolation(x, y, xValue) {
-  let total = { num: 0n, den: 1n };
-  const n = x.length;
-
-  for (let i = 0; i < n; i++) {
-    const xi = BigInt(x[i]);
-    const yi = y[i];
-    let li = { num: 1n, den: 1n };
-
-    for (let j = 0; j < n; j++) {
-      if (i !== j) {
-        const xj = BigInt(x[j]);
-        const numerator = BigInt(xValue) - xj;
-        const denominator = xi - xj;
-        li = multiplyFractions(li, { num: numerator, den: denominator });
-      }
-    }
-    const term = multiplyFractions({ num: yi, den: 1n }, li);
-    total = addFractions(total, term);
-  }
-  return simplifyFraction(total);
-}
-
-// Main function to execute the program
-function main() {
-  try {
-    const data = JSON.parse(fs.readFileSync("input.json", "utf8"));
-
-    const keys = data.keys;
-    const n = keys.n;
-    const k = keys.k;
-
-    const x = [];
-    const y = [];
-
-    for (const key in data) {
-      if (key !== "keys") {
-        const point = data[key];
-        const base = parseInt(point.base);
-        const value = point.value;
-        const xValue = parseInt(key);
-        const yValue = decodeValue(base, value);
-        x.push(xValue);
-        y.push(yValue);
-      }
+    for (let j = 0; j < k; j++) {
+        if (j !== i) {
+            numerator = numerator.times(xList[j].negated());
+            denominator = denominator.times(xList[i].minus(xList[j]));
+        }
     }
 
-    const totalFraction = lagrangeInterpolation(x, y, 0);
-
-    console.log(
-      "The constant term c is:",
-      totalFraction.num.toString() + "/" + totalFraction.den.toString()
-    );
-
-    // Decimal approximation (may lose precision for very large numbers)
-    const decimalValue = Number(totalFraction.num) / Number(totalFraction.den);
-    console.log("Decimal approximation:", decimalValue);
-  } catch (error) {
-    console.error(error);
-  }
+    const Li0 = numerator.dividedBy(denominator);
+    const term = yList[i].times(Li0);
+    c = c.plus(term);
 }
 
-main();
+// Output the constant term c
+console.log(c.toFixed(0));
